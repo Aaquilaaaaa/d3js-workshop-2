@@ -4,21 +4,32 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
+    <title>D3.js Arc Diagram Demo</title>
     <link rel="stylesheet" href="css/demo.css">
 </head>
 
 <body>
+    <!-- Main heading for the demo -->
     <h1>D3.js Fundamentals Demo</h1>
+    
+    <!-- Section containing the interactive arc diagram -->
     <div class="section">
         <h2> Adapt Arc Diagram </h2>
         <p> Run <a href="https://observablehq.com/@d3/arc-diagram">Arc Diagram with Les Miserables characters</a> locally </p>
-        <select id="order-select">
+        <!-- Dropdown control for ordering the nodes in the diagram -->
+        <select id="order-select" 
+                aria-label="Choose ordering method for the arc diagram"
+                title="Select how to arrange the character nodes">
             <option value="by name">by name</option>
             <option value="by group">by group</option>
             <option value="by degree">by degree</option>
         </select>
-        <div id = "chart" class="demo-container">
+        <!-- Container for the D3.js visualization -->
+        <div id="chart" 
+             class="demo-container"
+             role="img" 
+             aria-label="Interactive arc diagram showing connections between Les Miserables characters"
+             title="Hover over character names to see their connections">
         </div>
     </div>
 </body>
