@@ -75,11 +75,197 @@ function draw(airlineFilter) {
 
 draw("all"); // initial draw
 
-// adapt chart visualization code from 
-// https://observablehq.com/@d3/hierarchical-edge-bundling
-
-// Requirements:
-// update the logic for hover and unhover states
-// - on hover, highlight the hovered node and all directly connected nodes and links (incoming and outgoing)
-// - on unhover, return all nodes and links to their default state
-// update the tooltip to show the focus airport code and region, as well as number of incoming and outgoing routes
+// Hierarchical edge bundling chart implementation
+function createChart(data) {
+    // Chart dimensions and configuration
+    const width = 800;
+    const height = 800;
+    const radius = width / 2;
+    
+    // Create the hierarchy from the data
+    const root = d3.hierarchy(data)
+        .sum(d => d.destinations ? d.destinations.length : 0)
+        .sort((a, b) => d3.ascending(a.data.name, b.data.name));
+    
+    // Create the cluster layout
+    const cluster = d3.cluster()
+        .size([2 * Math.PI, radius - 100]);
+    
+    cluster(root);
+    
+    // Set up the bilink structure
+    bilink(root);
+    
+    // Create SVG
+    const svg = d3.create("svg")
+        .attr("width", width)
+        .attr("height", height)
+        .attr("viewBox", [-width / 2, -height / 2, width, height])
+        .attr("style", "max-width: 100%; height: auto; font: 10px sans-serif;");
+    
+    // Create tooltip
+    const tooltip = d3.select("body")
+        .append("div")
+        .attr("class", "tooltip")
+        .style("position", "absolute")
+        .style("padding", "10px")
+        .style("background", "rgba(0, 0, 0, 0.8)")
+        .style("color", "white")
+        .style("border-radius", "5px")
+        .style("pointer-events", "none")
+        .style("opacity", 0);
+    
+    // Line generator for the bundled edges
+    const line = d3.lineRadial()
+        .curve(d3.curveBundle.beta(0.85))
+        .radius(d => d.y)
+        .angle(d => d.x);
+    
+    // Create links (edges)
+    const link = svg.append("g")
+        .attr("stroke", colornone)
+        .attr("fill", "none")
+        .selectAll("path")
+        .data(root.leaves().flatMap(leaf => leaf.outgoing))
+        .join("path")
+        .style("mix-blend-mode", "multiply")
+        .attr("d", ([source, target, airline]) => line(source.path(target)))
+        .attr("stroke", ([source, target, airline]) => airlineColor[airline] || colornone)
+        .attr("stroke-width", 1.5)
+        .attr("opacity", 0.6)
+        .each(function(d) { d.path = this; });
+    
+    // Create nodes
+    const node = svg.append("g")
+        .selectAll("g")
+        .data(root.leaves())
+        .join("g")
+        .attr("transform", d => `rotate(${d.x * 180 / Math.PI - 90}) translate(${d.y},0)`)
+        .style("cursor", "pointer");
+    
+    // Add circles for nodes
+    node.append("circle")
+        .attr("fill", d => d.children ? "#555" : "#999")
+        .attr("r", 3);
+    
+    // Add text labels for nodes
+    node.append("text")
+        .attr("dy", "0.31em")
+        .attr("x", d => d.x < Math.PI === !d.children ? 6 : -6)
+        .attr("text-anchor", d => d.x < Math.PI === !d.children ? "start" : "end")
+        .attr("transform", d => d.x >= Math.PI ? "rotate(180)" : null)
+        .text(d => d.data.name)
+        .attr("font-size", "10px")
+        .attr("fill", "#333");
+    
+    // Add hover interactions
+    node
+        .on("mouseover", function(event, d) {
+            // Highlight the hovered node
+            d3.select(this).select("circle")
+                .attr("r", 5)
+                .attr("fill", "red");
+            
+            d3.select(this).select("text")
+                .attr("font-weight", "bold")
+                .attr("font-size", "12px");
+            
+            // Highlight connected nodes and links
+            const connectedNodes = new Set();
+            const connectedLinks = new Set();
+            
+            // Add outgoing connections
+            d.outgoing.forEach(([source, target, airline]) => {
+                connectedNodes.add(target);
+                connectedLinks.add(source.path(target));
+            });
+            
+            // Add incoming connections
+            d.incoming.forEach(([source, target, airline]) => {
+                connectedNodes.add(source);
+                connectedLinks.add(source.path(target));
+            });
+            
+            // Highlight connected nodes
+            node.select("circle")
+                .attr("fill", n => {
+                    if (n === d) return "red";
+                    if (connectedNodes.has(n)) return "orange";
+                    return "#ccc";
+                })
+                .attr("r", n => {
+                    if (n === d) return 5;
+                    if (connectedNodes.has(n)) return 4;
+                    return 3;
+                });
+            
+            node.select("text")
+                .attr("fill", n => {
+                    if (n === d || connectedNodes.has(n)) return "#000";
+                    return "#ccc";
+                });
+            
+            // Highlight connected links
+            link.attr("stroke", ([source, target, airline]) => {
+                if (source === d || target === d) {
+                    return airlineColor[airline] || "red";
+                }
+                return "#eee";
+            })
+            .attr("opacity", ([source, target, airline]) => {
+                if (source === d || target === d) return 1;
+                return 0.1;
+            })
+            .attr("stroke-width", ([source, target, airline]) => {
+                if (source === d || target === d) return 2;
+                return 1;
+            });
+            
+            // Show tooltip
+            const incomingCount = d.incoming.length;
+            const outgoingCount = d.outgoing.length;
+            const region = d.parent ? d.parent.data.name : "Unknown";
+            
+            tooltip.transition()
+                .duration(200)
+                .style("opacity", 0.9);
+            
+            tooltip.html(`
+                <strong>${d.data.name}</strong><br/>
+                Region: ${region}<br/>
+                Incoming routes: ${incomingCount}<br/>
+                Outgoing routes: ${outgoingCount}<br/>
+                Total connections: ${incomingCount + outgoingCount}
+            `)
+            .style("left", (event.pageX + 10) + "px")
+            .style("top", (event.pageY - 10) + "px");
+        })
+        .on("mousemove", function(event) {
+            tooltip
+                .style("left", (event.pageX + 10) + "px")
+                .style("top", (event.pageY - 10) + "px");
+        })
+        .on("mouseout", function(event, d) {
+            // Reset all nodes to default state
+            node.select("circle")
+                .attr("r", 3)
+                .attr("fill", "#999");
+            
+            node.select("text")
+                .attr("font-weight", "normal")
+                .attr("font-size", "10px")
+                .attr("fill", "#333");
+            
+            // Reset all links to default state
+            link.attr("stroke", ([source, target, airline]) => airlineColor[airline] || colornone)
+                .attr("opacity", 0.6)
+                .attr("stroke-width", 1.5);
+            
+            // Hide tooltip
+            tooltip.transition()
+                .duration(500)
+                .style("opacity", 0);
+        });
+    
+    return svg.node();
+}
